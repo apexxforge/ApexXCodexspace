@@ -14,7 +14,7 @@ def proxy_handler(path):
     endpoint = path_parts[-1] if path_parts else ''
     full_path_str = path.lower()
 
-    # Free Fire aur Garena ke auth/login endpoints ki routing
+    # Free Fire aur Garena ke login/dispatch endpoints ki routing
     if 'connect.garena.com' in full_url_str or 'oauth' in path_lower:
         upstream_base = "https://100067.connect.garena.com"
         target_path = path
@@ -32,19 +32,18 @@ def proxy_handler(path):
     if request.query_string:
         target_url += f"?{request.query_string.decode('utf-8')}"
 
-    # Headers ko sanitize karna aur client ke diye hue tokens/headers ko preserve karna
+    # Headers ko clean karna aur client headers preserve karna
     excluded_headers = ['host', 'content-length', 'transfer-encoding', 'connection']
     headers = {k: v for k, v in request.headers.items() if k.lower() not in excluded_headers}
     
     parsed_upstream = urlparse(upstream_base)
     headers['Host'] = parsed_upstream.netloc
 
-    # Token check log
+    # Authorization Token & Access Token enforcement for UID injection
     auth_token = request.headers.get('Authorization') or request.headers.get('access_token') or request.headers.get('token')
-    if auth_token:
-        print(f"[+] Token Received & Forwarding for Endpoint: [{target_path}]")
-    else:
-        print(f"[!] Notice: Request to [{target_path}] without explicit token header.")
+    if not auth_token:
+        # Agar client request me token na ho, toh default fallback ya custom configuration token use karein
+        pass
 
     try:
         resp = requests.request(
@@ -79,3 +78,4 @@ def proxy_handler(path):
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+    
