@@ -4,8 +4,8 @@ from flask import Flask, request, Response
 
 app = Flask(__name__)
 
-# Free Fire ka official upstream server
-UPSTREAM_SERVER = "https://client.freefiremobile.com"
+# Free Fire ka official regional upstream server (India region ke liye)
+UPSTREAM_SERVER = "https://client.ind.freefiremobile.com"
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
@@ -14,17 +14,14 @@ def proxy_handler(path):
     if request.query_string:
         target_url += f"?{request.query_string.decode('utf-8')}"
 
-    # Headers ko clean karna taaki 502 Bad Gateway na aaye
-    excluded_headers = ['host', 'content-length', 'transfer-encoding', 'connection', 'accept-encoding']
-    headers = {}
-    for k, v in request.headers.items():
-        if k.lower() not in excluded_headers:
-            headers[k] = v
+    # Unnecessary headers filter karna taaki connection stable rahe
+    excluded_headers = ['host', 'content-length', 'transfer-encoding', 'connection']
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in excluded_headers}
+    
+    # Upstream ke liye sahi Host header explicitly define karna
+    headers['Host'] = 'client.ind.freefiremobile.com'
 
-    # Host header ko upstream ke mutabiq set karna zaroori hai
-    headers['Host'] = 'client.freefiremobile.com'
-
-    # Token logging for tracking
+    # Token ya request log check karne ke liye
     auth_token = request.headers.get('Authorization') or request.headers.get('access_token')
     if auth_token:
         print(f"[+] Active Token Detected on path [{path}]: {auth_token[:25]}...")
@@ -37,15 +34,14 @@ def proxy_handler(path):
             data=request.get_data(),
             cookies=request.cookies,
             allow_redirects=False,
-            stream=True,
-            timeout=35
+            timeout=30
         )
     except requests.exceptions.RequestException as e:
-        print(f"[-] Upstream Connection Error: {e}")
         return Response(f"Proxy upstream error: {e}", status=502)
 
+    # Response headers ko filter karna
     response_headers = [
-        (k, v) for k, v in resp.raw.headers.items()
+        (k, v) for k, v in resp.headers.items()
         if k.lower() not in ('content-encoding', 'transfer-encoding', 'connection', 'content-length')
     ]
 
