@@ -4,7 +4,7 @@ from flask import Flask, request, Response
 
 app = Flask(__name__)
 
-# Free Fire ka official upstream server ya target endpoint
+# Free Fire ka official upstream server
 UPSTREAM_SERVER = "https://client.freefiremobile.com"
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
@@ -14,11 +14,17 @@ def proxy_handler(path):
     if request.query_string:
         target_url += f"?{request.query_string.decode('utf-8')}"
 
-    # Unnecessary headers filter karna taaki connection stable rahe
-    excluded_headers = ['host', 'content-length', 'transfer-encoding', 'connection']
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in excluded_headers}
+    # Headers ko clean karna taaki 502 Bad Gateway na aaye
+    excluded_headers = ['host', 'content-length', 'transfer-encoding', 'connection', 'accept-encoding']
+    headers = {}
+    for k, v in request.headers.items():
+        if k.lower() not in excluded_headers:
+            headers[k] = v
 
-    # Token ya request log check karne ke liye (Terminal / Render logs me dikhega)
+    # Host header ko upstream ke mutabiq set karna zaroori hai
+    headers['Host'] = 'client.freefiremobile.com'
+
+    # Token logging for tracking
     auth_token = request.headers.get('Authorization') or request.headers.get('access_token')
     if auth_token:
         print(f"[+] Active Token Detected on path [{path}]: {auth_token[:25]}...")
@@ -32,14 +38,15 @@ def proxy_handler(path):
             cookies=request.cookies,
             allow_redirects=False,
             stream=True,
-            timeout=30
+            timeout=35
         )
     except requests.exceptions.RequestException as e:
+        print(f"[-] Upstream Connection Error: {e}")
         return Response(f"Proxy upstream error: {e}", status=502)
 
     response_headers = [
         (k, v) for k, v in resp.raw.headers.items()
-        if k.lower() not in ('content-encoding', 'transfer-encoding', 'connection')
+        if k.lower() not in ('content-encoding', 'transfer-encoding', 'connection', 'content-length')
     ]
 
     return Response(
