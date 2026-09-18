@@ -8,26 +8,26 @@ app = Flask(__name__)
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
 def proxy_handler(path):
-    path_lower = path.lower()
     full_url_str = request.url.lower()
+    path_lower = path.lower()
 
-    # पाथ से रैंडम हैश/प्रिफिक्स (जैसे 0698e9b88...) को ट्रिम करना
+    # URL path se random hash/prefix strip karna taaki clean endpoint mil sake
     path_parts = path.strip('/').split('/')
     endpoint = path_parts[-1] if path_parts else ''
     full_path_str = path.lower()
 
-    # सही अपस्ट्रीम सर्वर चुनना (DNS इश्यू से बचने के लिए बाईपास डोमेन का उपयोग)
+    # Upstream server routing logic based on Free Fire endpoints
     if 'connect.garena.com' in full_url_str or 'oauth' in path_lower:
         upstream_base = "https://100067.connect.garena.com"
         target_path = path
-    elif any(k in full_path_str for k in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname', 'getaccountbriefinfobeforelogin']):
+    elif any(k in full_path_str for k in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname', 'getaccountbriefinfobeforelogin', 'getlogininfo']):
         upstream_base = "https://loginbp.ggpolarbear.com"
-        target_path = endpoint if endpoint.lower() in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname', 'getaccountbriefinfobeforelogin'] else path
+        target_path = endpoint if endpoint.lower() in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname', 'getaccountbriefinfobeforelogin', 'getlogininfo'] else path
     elif 'ggwhitehawk.com' in full_url_str:
         upstream_base = "https://clientbp.ggwhitehawk.com"
         target_path = path
     else:
-        # टोकन के अंदर दिए गए इंडियड सर्वर को एक्टिव बाईपास डोमेन पर रूट करना
+        # Default target for client operations and game data payloads
         upstream_base = "https://clientbp.ggblueshark.com"
         target_path = path
 
@@ -35,17 +35,19 @@ def proxy_handler(path):
     if request.query_string:
         target_url += f"?{request.query_string.decode('utf-8')}"
 
-    # हेडर्स तैयार करना और होस्ट सेट करना
+    # Headers cleaning and Host header mapping
     excluded_headers = ['host', 'content-length', 'transfer-encoding', 'connection']
     headers = {k: v for k, v in request.headers.items() if k.lower() not in excluded_headers}
     
     parsed_upstream = urlparse(upstream_base)
     headers['Host'] = parsed_upstream.netloc
 
-    # आपके अकाउंट टोकन और डेटा को ट्रैक व फॉरवर्ड करना
+    # Authorization Token & Access Token validation tracking
     auth_token = request.headers.get('Authorization') or request.headers.get('access_token') or request.headers.get('token')
     if auth_token:
-        print(f"[+] Account ID 17023400447 Active | Endpoint: [{target_path}] -> Routing to: {parsed_upstream.netloc}")
+        print(f"[+] Target Account Loaded | Endpoint: [{target_path}] -> Routing to: {parsed_upstream.netloc}")
+    else:
+        print(f"[!] Warning: Request missing authorization header for [{target_path}]")
 
     try:
         resp = requests.request(
@@ -60,7 +62,7 @@ def proxy_handler(path):
     except requests.exceptions.RequestException as e:
         return Response(f"Proxy upstream error: {e}", status=502)
 
-    # रिस्पॉन्स हेडर्स और लोकेशन रीराइट करना
+    # Response headers sanitization and redirect handling
     response_headers = []
     proxy_host = request.host
 
