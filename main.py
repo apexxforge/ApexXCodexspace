@@ -8,37 +8,45 @@ app = Flask(__name__)
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
 def proxy_handler(path):
-    # Default active bypass upstream server
-    upstream_base = "https://clientbp.ggblueshark.com"
-    
     path_lower = path.lower()
     full_url_str = request.url.lower()
 
-    # Dynamic multi-server routing logic based on request path and domain
-    if 'connect.garena.com' in full_url_str or 'oauth' in path_lower or 'game/account_security' in path_lower:
+    # पाथ से रैंडम हैश/प्रिफिक्स हटाकर असली एंडपॉइंट निकालना
+    path_parts = path.strip('/').split('/')
+    endpoint = path_parts[-1] if path_parts else ''
+    
+    # अगर पाथ में पूरा एंडपॉइंट शामिल हो
+    full_path_str = path.lower()
+
+    # सही अपस्ट्रीम सर्वर चुनना
+    if 'connect.garena.com' in full_url_str or 'oauth' in path_lower:
         upstream_base = "https://100067.connect.garena.com"
-    elif 'ggblueshark.com' in full_url_str:
-        upstream_base = "https://clientbp.ggblueshark.com"
+        target_path = path
+    elif any(k in full_path_str for k in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname']):
+        upstream_base = "https://loginbp.ggpolarbear.com"
+        target_path = endpoint if endpoint.lower() in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname'] else path
     elif 'ggwhitehawk.com' in full_url_str:
         upstream_base = "https://clientbp.ggwhitehawk.com"
-    elif 'ggpolarbear.com' in full_url_str or any(k in path_lower for k in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname']):
-        upstream_base = "https://loginbp.ggpolarbear.com"
+        target_path = path
+    else:
+        upstream_base = "https://clientbp.ggblueshark.com"
+        target_path = path
 
-    target_url = f"{upstream_base.rstrip('/')}/{path}"
+    target_url = f"{upstream_base.rstrip('/')}/{target_path}"
     if request.query_string:
         target_url += f"?{request.query_string.decode('utf-8')}"
 
-    # Unnecessary headers filter karna taaki connection stable rahe
+    # अनावश्यक हेडर्स को फिल्टर करना
     excluded_headers = ['host', 'content-length', 'transfer-encoding', 'connection']
     headers = {k: v for k, v in request.headers.items() if k.lower() not in excluded_headers}
     
     parsed_upstream = urlparse(upstream_base)
     headers['Host'] = parsed_upstream.netloc
 
-    # Token ya request log check karne ke liye
+    # टोकन और रिक्वेस्ट लॉग करना
     auth_token = request.headers.get('Authorization') or request.headers.get('access_token')
     if auth_token:
-        print(f"[+] Active Token Detected on path [{path}] -> Routing to: {parsed_upstream.netloc}")
+        print(f"[+] Active Token | Endpoint: [{target_path}] -> Routing to: {parsed_upstream.netloc}")
 
     try:
         resp = requests.request(
@@ -53,7 +61,7 @@ def proxy_handler(path):
     except requests.exceptions.RequestException as e:
         return Response(f"Proxy upstream error: {e}", status=502)
 
-    # Response headers ko filter karna aur location header rewrite karna
+    # रिस्पॉन्स हेडर्स और लोकेशन रीराइट करना
     response_headers = []
     proxy_host = request.host
 
