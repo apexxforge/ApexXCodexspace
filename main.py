@@ -14,17 +14,15 @@ def proxy_handler(path):
     # पाथ से रैंडम हैश/प्रिफिक्स हटाकर असली एंडपॉइंट निकालना
     path_parts = path.strip('/').split('/')
     endpoint = path_parts[-1] if path_parts else ''
-    
-    # अगर पाथ में पूरा एंडपॉइंट शामिल हो
     full_path_str = path.lower()
 
     # सही अपस्ट्रीम सर्वर चुनना
     if 'connect.garena.com' in full_url_str or 'oauth' in path_lower:
         upstream_base = "https://100067.connect.garena.com"
         target_path = path
-    elif any(k in full_path_str for k in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname']):
+    elif any(k in full_path_str for k in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname', 'getaccountbriefinfobeforelogin']):
         upstream_base = "https://loginbp.ggpolarbear.com"
-        target_path = endpoint if endpoint.lower() in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname'] else path
+        target_path = endpoint if endpoint.lower() in ['majorlogin', 'majorregister', 'getlogindata', 'chooseregion', 'majormodifynickname', 'getaccountbriefinfobeforelogin'] else path
     elif 'ggwhitehawk.com' in full_url_str:
         upstream_base = "https://clientbp.ggwhitehawk.com"
         target_path = path
@@ -36,17 +34,19 @@ def proxy_handler(path):
     if request.query_string:
         target_url += f"?{request.query_string.decode('utf-8')}"
 
-    # अनावश्यक हेडर्स को फिल्टर करना
+    # हेडर्स तैयार करना और टोकन इंश्योर करना
     excluded_headers = ['host', 'content-length', 'transfer-encoding', 'connection']
     headers = {k: v for k, v in request.headers.items() if k.lower() not in excluded_headers}
     
     parsed_upstream = urlparse(upstream_base)
     headers['Host'] = parsed_upstream.netloc
 
-    # टोकन और रिक्वेस्ट लॉग करना
-    auth_token = request.headers.get('Authorization') or request.headers.get('access_token')
+    # क्लाइंट से आने वाले टोकन को कैप्चर और लॉग करना
+    auth_token = request.headers.get('Authorization') or request.headers.get('access_token') or request.headers.get('token')
     if auth_token:
-        print(f"[+] Active Token | Endpoint: [{target_path}] -> Routing to: {parsed_upstream.netloc}")
+        print(f"[+] Token Captured & Forwarding | Endpoint: [{target_path}] -> Target: {parsed_upstream.netloc}")
+    else:
+        print(f"[!] Warning: No Auth Token found in request for [{target_path}]")
 
     try:
         resp = requests.request(
