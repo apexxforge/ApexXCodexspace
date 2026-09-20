@@ -1,47 +1,37 @@
-import os
-from fastapi import FastAPI, Query
-from fastapi.middleware.cors import CORSMiddleware
+from flask import Flask, request, jsonify
+import requests
 
-app = FastAPI(
-    title="KEYZO Backend Service",
-    description="Render-ready backend for Free Fire login configuration",
-    version="1.0.0"
-)
+app = Flask(__name__)
 
-# CORS middleware enable karna taaki external requests block na ho
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.get("/")
-def health_check():
-    return {
+@app.route('/')
+def home():
+    return jsonify({
         "status": "Online",
-        "service": "KEYZO Backend is running successfully on Render!",
-        "code": 200
-    }
+        "message": "Bypass Backend is running successfully!"
+    })
 
-@app.get("/login")
-def handle_login(access_token: str = Query(..., description="User Access Token")):
-    """
-    Yeh endpoint game client se aane wale access token ko process 
-    karke required serverUrl structure return karta hai.
-    """
-    # Naye domain structure ke mutabiq login URL mapping
+@app.route('/login', methods=['GET', 'POST'])
+def login_bypass():
+    # Incoming request se access_token nikalna
+    access_token = request.args.get('access_token')
+    
+    if not access_token:
+        return jsonify({
+            "status": "Error",
+            "message": "Access token is missing!"
+        }, 400)
+
+    # Naye domain par request map aur bypass handle karna
     target_server_url = f"https://loginbp.ppmainecoonghj.com/login?access_token={access_token}"
     
-    return {
+    # Yahan aap chahe toh requests.get(target_server_url) karke response bhi forward kar sakte hain
+    return jsonify({
         "serverUrl": target_server_url,
         "status": "Success",
-        "message": "Configuration generated successfully."
-    }
+        "bypass": True,
+        "message": "Request successfully bypassed and config generated."
+    })
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000)
     
