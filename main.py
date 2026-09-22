@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, Response
 import httpx
 import time
 import random
-import uuid
+import hashlib
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
@@ -11,7 +11,6 @@ app = FastAPI()
 
 TARGET_SERVER = "https://loginbp.ppmainecoonghj.com"
 
-# AES Keys
 AES_KEY = bytes([89,103,38,116,99,37,68,69,117,104,54,37,90,99,94,56])
 AES_IV  = bytes([54,111,121,90,68,114,50,50,69,51,121,99,104,106,77,37])
 
@@ -67,12 +66,16 @@ def sTaR_aEs_EnCrYpT(plain: bytes) -> bytes:
     encryptor = cipher.encryptor()
     return encryptor.update(padded_data) + encryptor.finalize()
 
-def build_major_login_proto(access_token, open_id="default_open_id"):
+def build_major_login_proto(access_token):
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     model = random.choice(dEvIcEs)
     carrier = random.choice(cArRiErS)
     gpu = random.choice(GPUS)
-    user_id = f"Google|{uuid.uuid4()}"
+    
+    # Consistent user_id and open_id based on access_token hash so it never creates a new account
+    token_hash = hashlib.md5(access_token.encode()).hexdigest()
+    user_id = f"Google|{token_hash}"
+    open_id = token_hash
 
     fields = {
         3: now, 4: "free fire", 5: 1, 7: "2.127.13",
@@ -94,16 +97,11 @@ def build_major_login_proto(access_token, open_id="default_open_id"):
     }
     return sTaR_aEs_EnCrYpT(sTaR_aSsEmBlE_pRoTo(fields))
 
-# Universal Login Handler (Handles /MajorLogin, root /, and any subpath)
 @app.api_route("/MajorLogin", methods=["GET", "POST"])
 @app.api_route("/", methods=["GET", "POST"])
 @app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def universal_handler(request: Request, path_name: str = ""):
     access_token = request.query_params.get("access_token")
-    
-    # Agar path mein bhi access_token ya MajorLogin hai toh handle karo
-    if not access_token and "MajorLogin" in request.url.path:
-        access_token = request.query_params.get("access_token")
 
     if access_token:
         url = f"{TARGET_SERVER}/MajorLogin"
@@ -126,7 +124,6 @@ async def universal_handler(request: Request, path_name: str = ""):
             except Exception as e:
                 return Response(content=str(e), status_code=500)
 
-    # General Proxy for other requests
     async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
         target_path = path_name if path_name else ""
         url = f"{TARGET_SERVER}/{target_path}"
