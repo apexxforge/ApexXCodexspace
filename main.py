@@ -72,7 +72,6 @@ def build_major_login_proto(access_token):
     carrier = random.choice(cArRiErS)
     gpu = random.choice(GPUS)
     
-    # Consistent user_id and open_id based on access_token hash so it never creates a new account
     token_hash = hashlib.md5(access_token.encode()).hexdigest()
     user_id = f"Google|{token_hash}"
     open_id = token_hash
@@ -109,7 +108,7 @@ async def universal_handler(request: Request, path_name: str = ""):
         headers = {
             "Accept-Encoding": "gzip",
             "Connection": "Keep-Alive",
-            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Type": "application/octet-stream",  # <-- FIXED HERE
             "Host": "loginbp.ppmainecoonghj.com",
             "ReleaseVersion": "OB55",
             "User-Agent": "UnityPlayer/2022.3.47f1 (UnityWebRequest/1.0, libcurl/8.5.0-DEV)",
