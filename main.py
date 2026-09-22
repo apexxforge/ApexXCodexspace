@@ -3,17 +3,15 @@ import httpx
 import time
 import random
 import uuid
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import padding
 
 app = FastAPI()
 
 TARGET_SERVER = "https://loginbp.ppmainecoonghj.com"
 
-# ============================================================
-# AES & PROTOBUF HELPERS FOR MAJOR LOGIN
-# ============================================================
-
+# AES Keys
 AES_KEY = bytes([89,103,38,116,99,37,68,69,117,104,54,37,90,99,94,56])
 AES_IV  = bytes([54,111,121,90,68,114,50,50,69,51,121,99,104,106,77,37])
 
@@ -63,8 +61,11 @@ def sTaR_aSsEmBlE_pRoTo(fields: dict) -> bytes:
     return packet
 
 def sTaR_aEs_EnCrYpT(plain: bytes) -> bytes:
-    cipher = AES.new(AES_KEY, AES.MODE_CBC, AES_IV)
-    return cipher.encrypt(pad(plain, AES.block_size))
+    padder = padding.PKCS7(128).padder()
+    padded_data = padder.update(plain) + padder.finalize()
+    cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(AES_IV), backend=default_backend())
+    encryptor = cipher.encryptor()
+    return encryptor.update(padded_data) + encryptor.finalize()
 
 def build_major_login_proto(access_token, open_id="default_open_id"):
     now = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -93,49 +94,42 @@ def build_major_login_proto(access_token, open_id="default_open_id"):
     }
     return sTaR_aEs_EnCrYpT(sTaR_aSsEmBlE_pRoTo(fields))
 
-# ============================================================
-# FASTAPI PROXY & LOGIN ROUTE
-# ============================================================
-
+# Universal Login Handler (Handles /MajorLogin, root /, and any subpath)
 @app.api_route("/MajorLogin", methods=["GET", "POST"])
-async def major_login_proxy(request: Request):
-    # Bot se jo access_token query parameter me aayega use lena
-    access_token = request.query_params.get("access_token")
-    open_id = request.query_params.get("open_id", "default_openid")
-
-    if not access_token:
-        return {"success": False, "error": "Access Token missing in query parameters"}
-
-    url = f"{TARGET_SERVER}/MajorLogin"
-    encrypted_payload = build_major_login_proto(access_token, open_id)
-
-    headers = {
-        "Accept-Encoding": "gzip",
-        "Connection": "Keep-Alive",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Host": "loginbp.ppmainecoonghj.com",
-        "ReleaseVersion": "OB55",
-        "User-Agent": "UnityPlayer/2022.3.47f1 (UnityWebRequest/1.0, libcurl/8.5.0-DEV)",
-        "X-GA": "v1 1",
-        "X-Ga-Sv": "1789534056",
-        "X-Unity-Version": "2022.3.47f1"
-    }
-
-    async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
-        try:
-            response = await client.post(url, headers=headers, content=encrypted_payload)
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                headers=dict(response.headers)
-            )
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
+@app.api_route("/", methods=["GET", "POST"])
 @app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def general_proxy(request: Request, path_name: str):
+async def universal_handler(request: Request, path_name: str = ""):
+    access_token = request.query_params.get("access_token")
+    
+    # Agar path mein bhi access_token ya MajorLogin hai toh handle karo
+    if not access_token and "MajorLogin" in request.url.path:
+        access_token = request.query_params.get("access_token")
+
+    if access_token:
+        url = f"{TARGET_SERVER}/MajorLogin"
+        encrypted_payload = build_major_login_proto(access_token)
+        headers = {
+            "Accept-Encoding": "gzip",
+            "Connection": "Keep-Alive",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Host": "loginbp.ppmainecoonghj.com",
+            "ReleaseVersion": "OB55",
+            "User-Agent": "UnityPlayer/2022.3.47f1 (UnityWebRequest/1.0, libcurl/8.5.0-DEV)",
+            "X-GA": "v1 1",
+            "X-Ga-Sv": "1789534056",
+            "X-Unity-Version": "2022.3.47f1"
+        }
+        async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+            try:
+                response = await client.post(url, headers=headers, content=encrypted_payload)
+                return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
+            except Exception as e:
+                return Response(content=str(e), status_code=500)
+
+    # General Proxy for other requests
     async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
-        url = f"{TARGET_SERVER}/{path_name}"
+        target_path = path_name if path_name else ""
+        url = f"{TARGET_SERVER}/{target_path}"
         body = await request.body()
         headers = dict(request.headers)
         headers.pop("host", None)
@@ -149,11 +143,7 @@ async def general_proxy(request: Request, path_name: str):
                 content=body,
                 params=request.query_params
             )
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                headers=dict(response.headers)
-            )
+            return Response(content=response.content, status_code=response.status_code, headers=dict(response.headers))
         except Exception as e:
             return Response(content=str(e), status_code=500)
 
